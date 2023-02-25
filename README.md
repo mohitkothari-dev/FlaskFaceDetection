@@ -1,0 +1,1 @@
+Face Detection web application made using Flask framework
