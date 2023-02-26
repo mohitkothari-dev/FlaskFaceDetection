@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, Response
 import cv2
 import numpy as np
 from base64 import b64encode
@@ -28,25 +28,33 @@ def detect_faces(image):
 def home():
     return render_template('index.html')
 
-# Define the route for processing the uploaded image
-@app.route('/detect', methods=['POST'])
-def detect():
-    # Get the uploaded file from the request object
-    file = request.files['image']
+# Define the route for streaming the video with face detection
+@app.route('/video_feed')
+def video_feed():
+    # Open a connection to the user's camera
+    cap = cv2.VideoCapture(0)
 
-    # Read the image as a numpy array
-    img_array = np.frombuffer(file.read(), np.uint8)
-    img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+    # Define the MIME type for streaming video
+    video_mime_type = 'multipart/x-mixed-replace; boundary=frame'
 
-    # Call the detect_faces function to perform face detection on the image
-    result_img = detect_faces(img)
+    def generate():
+        while True:
+            # Read a frame from the camera
+            ret, frame = cap.read()
 
-    # Convert the result image to a JPEG-encoded byte string for display on the web page
-    _, result_buffer = cv2.imencode('.jpg', result_img)
-    result_str = result_buffer.tobytes()
+            # Call the detect_faces function to perform face detection on the frame
+            result_frame = detect_faces(frame)
 
-    # Return the result image as a response
-    return render_template('result.html', result_image=b64encode(result_str).decode('utf-8'))
+            # Convert the result image to a JPEG-encoded byte string for streaming
+            _, result_buffer = cv2.imencode('.jpg', result_frame)
+            result_str = result_buffer.tobytes()
+
+            # Send the result image as a MIME multipart response
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + result_str + b'\r\n')
+
+    # Return the streaming response
+    return Response(generate(), mimetype=video_mime_type)
 
 if __name__ == '__main__':
     app.run(debug=True)
